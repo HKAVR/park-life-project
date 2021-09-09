@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <title>Park Life</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+    <style>
+      .buttons {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 5em;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10;
+      }
+
+      .say-hi-button {
+        padding: 0.25em;
+        border-radius: 4px;
+        border: none;
+        background: white;
+        color: black;
+        width: 8em;
+        height: 4em;
+        margin: 4px;
+        font-size: small;
+      }
+    </style>
+    <!-- Importing A Frame, AR.js and a few other scripts used -->
+    <script src="./aframe.min.js"></script>
+    <script src="./aframe-ar-nft.js"></script>
+    <script src="./aframe-extras.min.js"></script>
+    <script src="https://unpkg.com/aframe-look-at-component@0.8.0/dist/aframe-look-at-component.min.js"></script>
+    <script src="https://unpkg.com/aframe-transparent-video-shader@1.0.1/dist/aframe-transparent-video-shader.umd.js"></script>
+    <script>
+      // Creating a component to attach to the camera
+      // This component will set the plane element roation to the camera rotation
+      // This is to avoid the plane from stretching out weirdly if phone is rotated
+
+      AFRAME.registerComponent("camera-initializer", {
+        init: function() {
+        },
+        tick: function() {
+          let planeEl = document.getElementById("planeEntity")
+          let cameraRotation = document.getElementById("mainCamera").getAttribute('rotation')
+
+          planeEl.setAttribute('rotation', cameraRotation)
+        }
+      })
+
+      // This function is used later to set a video source to video element
+      // If Safari is found then MOV is set as video source, otherwise WebM
+      function supportsHEVCAlpha() {
+        const navigator = window.navigator;
+        const ua = navigator.userAgent.toLowerCase()
+        const hasMediaCapabilities = !!(navigator.mediaCapabilities && navigator.mediaCapabilities.decodingInfo)
+        const isSafari = ((ua.indexOf('safari') != -1) && (!(ua.indexOf('chrome')!= -1) && (ua.indexOf('version/')!= -1)))
+        return isSafari && hasMediaCapabilities
+      }
+    </script>
+    
+  </head>
+
+  <body style="margin: 0; overflow: hidden;">
+
+    <div class="buttons">
+      <button id="likeButton" class="say-hi-button"><i class="fa fa-thumbs-up"></i> Like</button>
+      <button id="startButton" class="say-hi-button">PLAY</button>
+      <button id="dislikeButton" class="say-hi-button"><i class="fa fa-thumbs-down"></i> Dislike</button>
+    </div>
+
+    <a-scene id="mainScene" vr-mode-ui="enabled: false;" arjs="sourceType: webcam; debugUIEnabled: false;">
+
+        <a-assets>
+          <!-- no video source is given here as it is loaded depending on 
+            if supportsHEVCAlpha function returns true or false
+          -->
+          <video id="myVid" crossorigin="anonymous" playsinline></video>
+        </a-assets>
+
+        <!-- a simple plane entity with transparent-video shader -->
+        <a-entity
+          id="planeEntity"
+          material="transparent: true; shader: transparent-video; src: #myVid;"
+          geometry="primitive: plane;
+                    width: 1;
+                    height: 1"
+          position="0 -10 -40"
+          scale="40 40 0"
+          look-at="[camera]"
+          >
+        </a-entity>
+
+        <!-- to limit showing this to a location following can be added to planeEntity -->
+        <!-- gps-entity-place="latitude: <<LAT>>; longitude:<<LON>>;" -->
+        <a-camera camera-initializer id="mainCamera" rotation-reader look-controls="enabled: true;">
+        </a-camera>
+      </a-scene>
+
+
+    <script>
+
+      var isVideoCompleted = false
+      var feedbackSubmittedAtSeconds = 0
+      var feedbackType = "unknown"
+      let userInfo = navigator.userAgent
+      let hardwareConcurrency = navigator.hardwareConcurrency
+      let userLang = navigator.language
+      let planeEl = document.getElementById("planeEntity")
+      let vidEl = document.getElementById("myVid")
+      let butEl = document.getElementById("startButton")
+      let likeEl = document.getElementById("likeButton")
+      let dislikeEl = document.getElementById("dislikeButton")
+      // In order to overcome CORS limitation without having to run a server and to
+      // send request from the browser directly, redirecting traffic through cors.bridged.cc
+      // There may be a better way to deal with it but this works for now
+      let feedbackSentHere = "https://cors.bridged.cc/<<IFTTT LINK>>"
+      var isFeedbackSubmitted = false
+
+      vidEl.src = supportsHEVCAlpha() ? 'your_file_name.mov' : 'your_file_name.webm';
+
+      // hides like and dislike button if newValue=true
+      function likeDislikeOption(newValue) {
+        if (isFeedbackSubmitted || newValue) {
+          likeEl.style.visibility = "hidden"
+          dislikeEl.style.visibility = "hidden"
+
+        }
+        else {
+          likeEl.style.visibility = "visible"
+          dislikeEl.style.visibility = "visible"
+        }
+      }
+
+      function startButtonPressed(event) {
+        let isVisible = planeEl.getAttribute("visible")
+
+        if (!isVisible) {
+            planeEl.setAttribute("visible", true)
+            vidEl.currentTime = 0.1 // only to avoid black frame
+          }
+
+        // If video is paused, then play it otherwise pause it
+        if (vidEl.paused == true) {
+          vidEl.play()
+          butEl.innerHTML = "PAUSE"
+          
+          likeDislikeOption(true) // setting like and dislike not visible
+        }
+        else {
+          vidEl.pause()
+          butEl.innerHTML = "PLAY"
+          
+          likeDislikeOption(false)
+
+        }
+      }
+
+      function videoFinished(event) {
+        butEl.innerHTML = "PLAY"
+        isVideoCompleted = true
+        likeDislikeOption(false) // show like and dislike button when video is finished and stopped
+      }
+
+      function composeAndSendFeedback(feedbackType) {
+
+        likeDislikeOption(true)
+
+        isFeedbackSubmitted = true
+        feedbackSubmittedAtSeconds = vidEl.currentTime
+
+        // Creating json object to send to IFTTT webhook
+        var dataToSend = JSON.stringify({
+            feedbackType: feedbackType,
+            feedbackSubmittedAtSeconds: feedbackSubmittedAtSeconds,
+            isVideoCompleted: isVideoCompleted,
+            userInfo: userInfo,
+            hardwareConcurrency: hardwareConcurrency,
+            userLanguage: userLang,
+            submissionDate: new Date().toLocaleDateString(),
+            submissionTime: new Date().toLocaleTimeString()
+        })
+
+        let headers = new Headers();
+
+        headers.append('Content-Type', 'application/json')
+
+        fetch(feedbackSentHere, {
+          method: "POST",
+          body: dataToSend,
+          headers: headers
+        })
+        .then(response => console.log("Got response"))
+        .catch(err => console.log(err))
+      }
+
+      // when start button is clicked, startButtonPressed function is called
+      butEl.addEventListener("click", startButtonPressed)
+      // when video is ended, videoFinished function is called
+      vidEl.addEventListener("ended", videoFinished)
+      // when like button is clicked, compose and send feedback
+      likeEl.addEventListener("click", (event) => {
+        composeAndSendFeedback("like")
+      })
+      // when dislike button is clicked, compose and send feedback
+      dislikeEl.addEventListener("click", (event) => {
+        composeAndSendFeedback("dislike")
+      })
+      // initially plane is not visible
+      planeEl.setAttribute("visible", false)
+      // initially like and dislike buttons are not visible
+      likeDislikeOption(true)
+  
+    </script>
+  </body>
+</html>
